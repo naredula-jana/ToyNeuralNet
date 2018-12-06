@@ -59,7 +59,7 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 	if true {
-		rawData, err := base.ParseCSVToInstances("iris_training.csv", false)
+		rawData, err := base.ParseCSVToInstances("data/iris_training.csv", false)
 		if err != nil {
 			panic(err)
 		}
