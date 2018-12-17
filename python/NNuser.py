@@ -1,4 +1,4 @@
-from NeuralNetV1 import *
+from NeuralNetV3 import *
 import cProfile
 
 pr = cProfile.Profile()
@@ -6,7 +6,7 @@ pr.enable()
 
 nn = NeuralNet([4,3,5,1])
 data = pd.read_csv("../data/iris_training.csv")
-#print (data)
+print (data)
 sepallength = data.SepalLength.values.tolist()
 sepalwidth = data.SepalWidth.values.tolist()
 petallength = data.PetalLength.values.tolist()

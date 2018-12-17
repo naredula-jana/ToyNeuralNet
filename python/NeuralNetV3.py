@@ -9,99 +9,65 @@ from array import *
 
 class Matrix:
     def __init__(self, rows,cols,vector):
-        self.activation = "sigmoid"
+        self.activation = NeuralNet.activation
         if vector is not None:
             self.rows = 1
             self.cols = len(vector)
-            self.mat = array('d',[random.random() for a in range(self.rows*self.cols)])
+            self.mat = np.array([[random.random() for col in range(self.cols)] for row in range(self.rows)])
             for i in range(self.cols):
-                self.mat[i] = vector[i]
+                self.mat[0][i] = vector[i]
             return
         self.rows = rows
-        self.cols = cols    
-        self.mat = array('d',[random.random() for a in range(self.rows*self.cols)])
-        #print (self.mat)
+        self.cols = cols
+        self.mat = np.array([[random.random() for col in range(self.cols)] for row in range(self.rows)])
 
     def setCol(self, X ,col): 
         for i in range(self.rows):
-            self.mat[i*(self.cols)+col] = X[i] 
+            self.mat[i][col] = X[i]
                 
     def colView(self, c):
         newmat =  Matrix(1,self.rows,None)
         for i in range(self.rows):
-            newmat.mat[i] = self.mat[i*(self.cols)+c]
+            newmat.mat[0][i] = self.mat[i][c]
         return newmat
     
     def add(self, X,Y):
-        for i in range(self.rows*self.cols):
-            self.mat[i] = X.mat[i] + Y.mat[i]
-         
+        self.mat = X.mat + Y.mat
+
     def mapActivation(self):
-        for i in range(self.rows*self.cols):
-            if self.activation == "sigmoid" :
-                x = self.mat[i]
-                self.mat[i] = 1 / (1 + np.exp(-x))
-            else:
-                self.mat[i] = np.tanh(self.mat[i])
+        if self.activation == "sigmoid" :
+            self.mat = 1 / (1 + np.exp(-self.mat))
+        else:
+            self.mat = np.tanh(self.mat)
+        
      
     def mapDeActivation(self):
-        for i in range(self.rows*self.cols):
-            if self.activation == "sigmoid" :
-                y = self.mat[i]
-                self.mat[i] =  y * (1 - y)
-            else:
-                y = self.mat[i]
-                self.mat[i] = (1.0 - (y*y))
-
+        if self.activation == "sigmoid" :
+            self.mat =  self.mat * (1 - self.mat)
+        else:
+            self.mat = (1.0 - (self.mat*self.mat))
+                
                 
     def subtract(self, X,Y):
-        for i in range(self.rows*self.cols):
-            self.mat[i] = X.mat[i] - Y.mat[i]
+        self.mat = X.mat - Y.mat
             
     def copy(self, X):
-        for i in range(self.rows*self.cols):
-            self.mat[i] = X.mat[i] 
-                
+        self.mat = X.mat
+
     def copyTranspose(self, X):
-        for i in range(X.rows):
-            for j in range(X.cols):
-                ij = i*(X.cols)+j
-                ji = j*(X.rows)+i      
-                self.mat[ji] = X.mat[ij]  
+        self.mat = X.mat.T        
                 
     def multiplyScalar(self,X, s):
-        #print (self.rows,self.cols,X.rows,X.cols,Y.rows,Y.cols)
-        for i in range(X.rows*X.cols):
-            self.mat[i] = (self.mat[i])*(X.mat[i])*(s)
-                    
+        self.mat = self.mat*X.mat*s
+
     def multiply(self, X,Y):
-        if X.cols != Y.rows:
-            print("ERROR in Multiplication")
-        for i in range(X.rows):
-            ij = (i*(self.cols))
-            for j in range(Y.cols):
-                self.mat[ij] = 0
-                for k in range(Y.rows):
-                    xik=(i*(X.cols))+k
-                    ykj=(k*(Y.cols))+j
-                    #print(" xik:",xik," ykj: ",ykj,"k: ",k," j: ",j," yrow:",Y.rows," ycols:",Y.cols)
-                    #print(" xtype: ",type(X.mat)," ytype: ",type(Y.mat))
-                    self.mat[ij] = self.mat[ij] + (X.mat[xik] * Y.mat[ykj])
-                ij = ij +1
+        self.mat = np.matmul(X.mat,Y.mat)
 
     def multiplyTranspose(self, X,Y):
         if X.cols != Y.cols:
             print("ERROR in MultiplicationTranspose")
-        for i in range(X.rows):
-            for j in range(Y.rows):
-                ij = (i*(self.cols))+j
-                self.mat[ij] = 0
-                xik=(i*(X.cols))
-                yjk=(j*(Y.cols)) 
-                for k in range(Y.cols):                    
-                    self.mat[ij] = self.mat[ij] + (X.mat[xik+k] * Y.mat[yjk+k])
-                    #xik = xik + 1
-                    #yjk = yjk + 1
+        self.mat = np.matmul(X.mat,Y.mat.T)
+       
                     
 class Layer:
     def __init__(self, curr_lay,prev_lay):     
@@ -109,7 +75,7 @@ class Layer:
         self.weights = Matrix(curr_lay,prev_lay,None)
         
         #initialise the weights accordingly
-        #self.weights.mat = np.random.randn(curr_lay,prev_lay)*np.sqrt(2/prev_lay)
+        self.weights.mat = np.random.randn(curr_lay,prev_lay)*np.sqrt(2/prev_lay)
         #print("New weights :",curr_lay," :",self.weights.mat)
         
         self.weights_T = Matrix(prev_lay, curr_lay,None)
@@ -122,6 +88,7 @@ class Layer:
         
     
 class NeuralNet:
+    activation = "sigmoid"
     def __init__(self, layers):
         self.layercount = len(layers)
         self.layers = []
@@ -139,7 +106,7 @@ class NeuralNet:
         for curr_size in layers:
             self.layers.append(Layer(curr_size,prev_size))
             prev_size = curr_size
-        print ("NeuralNetV2 created:  layers:",self.layercount)
+        print ("NeuralNetV3 created:  layers:",self.layercount," Activation Function : ",self.activation)
         
         
     def predict(self, input_args, target_args, batch_size):
