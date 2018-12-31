@@ -1,12 +1,12 @@
-from NeuralNetV3 import *
+from NeuralNetV4 import *
 import cProfile
 
 pr = cProfile.Profile()
 pr.enable()
 
 nn = NeuralNet([4,3,5,1])
-data = pd.read_csv("../data/iris_training.csv")
-print (data)
+data = pd.read_csv("./iris_training.csv")
+#print (data)
 sepallength = data.SepalLength.values.tolist()
 sepalwidth = data.SepalWidth.values.tolist()
 petallength = data.PetalLength.values.tolist()
@@ -16,7 +16,7 @@ types = data.types.values.tolist()
 datalen = len(sepallength)
 
 iteration=0
-while iteration< 10000 :
+while iteration< 100000 :
     i=0
     if iteration%1000 == 0:
         #nn.debug=True
@@ -32,4 +32,4 @@ while iteration< 10000 :
     iteration=iteration+1
     
 pr.disable()
-pr.print_stats()
+#pr.print_stats()
