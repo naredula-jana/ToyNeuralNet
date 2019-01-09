@@ -128,7 +128,7 @@ __global__ void CompositeTransposeMulKernel(int rows, int common_cols, int colum
     int tx = threadIdx.x  + blockDim.x * blockIdx.x;
     int ty = threadIdx.y + blockDim.y * blockIdx.y;
     
-//MultiplyTranspose + add ,  output= A*B.T + C
+    //MultiplyTranspose + add ,  output= A*B.T + C
     float Output = 0;
 
     if (tx < rows  && ty < columns ){
@@ -154,6 +154,21 @@ __global__ void Transpose2MatrixMulKernel(int rows, int common_cols,  int column
           float Aelement = a[k * rows + tx];
           float Belement = b[k * columns + ty];
           Pvalue += Aelement * Belement;
+       }
+       c[tx * columns + ty] = Pvalue;
+    }
+}
+__global__ void Transpose2MulScalarKernel(int rows, int common_cols,  int columns, float *a, float b, float *c)
+{
+    int tx = threadIdx.x  + blockDim.x * blockIdx.x;
+    int ty = threadIdx.y + blockDim.y * blockIdx.y;
+
+    float Pvalue = 0;
+
+    if (tx < rows  && ty < columns ) {
+       for (int k = 0; k < common_cols; ++k) {
+          float Aelement = a[k * rows + tx];
+          Pvalue += Aelement * b;
        }
        c[tx * columns + ty] = Pvalue;
     }
@@ -212,7 +227,8 @@ class Matrix:
             Matrix.gpu_matrixaddkernel = mod.get_function("MatrixAddKernel")
             Matrix.gpu_matrixSubtractkernel = mod.get_function("MatrixSubtractKernel")
             Matrix.gpu_multiplyTrans2matrixkernel = mod.get_function("Transpose2MatrixMulKernel")
-            
+            Matrix.gpu_multiplyTrans2Scalarkernel = mod.get_function("Transpose2MulScalarKernel")
+                        
             Matrix.gpu_compositeActivationkernel = mod.get_function("CompositeActivationKernel")
             Matrix.gpu_compositeDeactivationkernel = mod.get_function("CompositeDeActivationKernel")
             Matrix.gpu_compositeTransposeMulkernel = mod.get_function("CompositeTransposeMulKernel")
@@ -253,19 +269,27 @@ class Matrix:
                         self.mat[i][j] = k*0.25
                         k=k+1
                 
-        if self.gpu_enabled :
-            self.mat_gpu = gpuarray.to_gpu(self.mat) 
+        if self.gpu_enabled : 
+            self.saveToGpu()
             self.gpu_blockx = 25
             self.gpu_blocky = 25
             self.gpu_block= (np.int(self.gpu_blockx ),np.int(self.gpu_blocky),np.int(1))
             self.gpu_grid = (np.int(self.rows/self.gpu_blockx)+1,np.int(self.cols/self.gpu_blockx)+1,np.int(1))
         else:
             self.mat_gpu =0
-        
+    
+    def saveToGpu(self):
+        if self.gpu_enabled :
+            self.mat_gpu = gpuarray.to_gpu(self.mat)
+
+    def loadFromGpu(self):
+        if self.gpu_enabled :
+            self.mat_gpu.get(self.mat)
+                        
     def getFirstElement(self):
         if self.gpu_enabled :
-            ret=self.mat_gpu.get()
-            return ret[0][0]
+            self.mat_gpu.get(self.mat)
+            return self.mat[0][0]
         else:
             return self.mat[0][0] 
      
@@ -336,6 +360,7 @@ class Matrix:
         else:
             B_mat = B_arg.mat
             B_mat_gpu = B_arg.mat_gpu
+            
         if self.gpu_enabled :
             self.gpu_compositeActivationkernel(
                 self.rows, A.cols, self.cols,
@@ -430,79 +455,23 @@ class Matrix:
         else:
             self.mat = np.matmul(X.mat.T,Y.mat) 
             
+    def multiplyTranspose2Scalar(self, X, s):
+            
+        if self.gpu_enabled :
+            #print(" common rows: ",X.rows)
+            v = np.float32(s)
+            self.gpu_multiplyTrans2Scalarkernel(
+                self.rows,X.rows,self.cols,
+                X.mat_gpu, v,
+                self.mat_gpu,
+                block = self.gpu_block, grid = self.gpu_grid,
+                )
+        else:
+            self.mat = X.mat.T*s
+                       
     def printMat(self,s):
         if self.gpu_enabled :
             print("gpu Matrix: ",s,self.mat_gpu.get())
         else:
             print("Matrix: ", s,self.mat)
                   
-# -------------------- NOT in use functions
-'''
-             
-    def NOTINUSE_copy(self, X):
-        if self.gpu_enabled :
-            #self.mat_gpu.set(X.mat)
-            self.gpu_mapCopykernel(
-                self.rows,self.cols,
-                X.mat_gpu, 
-                self.mat_gpu, 
-                block = self.gpu_block, grid = self.gpu_grid,
-                ) 
-        else:
-            self.mat = X.mat
-
-    def NOTINUSE_copyTranspose(self, X):
-        if self.gpu_enabled :
-            self.gpu_mapCopyTransposekernel(
-                self.rows,self.cols,
-                X.mat_gpu, 
-                self.mat_gpu, 
-                block = self.gpu_block, grid = self.gpu_grid,
-                )
-        else:
-            self.mat = X.mat.T        
-                
-    def NOTINUSE_multiplyScalar(self,X, s):
-        if self.gpu_enabled :
-            v =  np.float32(s)
-            self.gpu_multiplyscalarkernel(
-                self.rows,self.cols,
-                X.mat_gpu, v, 
-                self.mat_gpu,
-                block = self.gpu_block, grid = self.gpu_grid,
-                )
-        else:
-            self.mat = self.mat*X.mat*s
-
-    def NOTINUSE_multiply(self, X,Y):
-        if self.gpu_enabled :
-            print("ERROR :  NOTINUSE")
-            self.gpu_multiplymatrixkernel(
-                self.rows,self.cols,
-                X.mat_gpu, Y.mat_gpu,
-                self.mat_gpu,
-                block = self.gpu_block, grid = self.gpu_grid,
-                ) 
-        else:
-            self.mat = np.matmul(X.mat,Y.mat)
-
-    def NOTINUSE_multiplyTranspose(self, X,Y):
-        if X.cols != Y.cols:
-            print("ERROR in MultiplicationTranspose")
-        
-        if self.gpu_enabled :
-            self.gpu_multiplyTransmatrixkernel(
-                self.rows,self.cols,
-                X.mat_gpu, Y.mat_gpu,
-                self.mat_gpu,
-                block = self.gpu_block, grid = self.gpu_grid,
-                ) 
-        else:
-            self.mat = np.matmul(X.mat,Y.mat.T)
- 
-    def NOTINUSE_colView(self, c):
-        newmat =  Matrix(1,self.rows,None)
-        for i in range(self.rows):
-            newmat.mat[0][i] = self.mat[i][c]
-        return newmat        
-'''     

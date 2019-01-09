@@ -5,20 +5,19 @@ import numpy as np
                  
 class Layer:
     def __init__(self, curr_lay,prev_lay,gpu_enabled):     
-         
         self.nodes = curr_lay
-        self.weights = Matrix(curr_lay,prev_lay,gpu_enabled, None)
         
-        self.weights_T = Matrix(prev_lay, curr_lay, gpu_enabled , None)
+        self.weights = Matrix(curr_lay,prev_lay,gpu_enabled, None)
+        self.bias =  Matrix(curr_lay,1, gpu_enabled, None)  
+        
+        # weights_delta is a temporary matrix.
         self.weights_delta = Matrix(curr_lay,prev_lay, gpu_enabled, None)
         self.error_val =  Matrix(curr_lay,1,gpu_enabled , None) 
         self.output =  Matrix(curr_lay,1, gpu_enabled, None) 
-        self.output_T =  Matrix(1, curr_lay, gpu_enabled, None)
-        self.bias =  Matrix(curr_lay,1, gpu_enabled, None) 
         self.gradients = Matrix(curr_lay,1, gpu_enabled, None) 
          
 class NeuralNet:
-    def __init__(self, layers, gpu_enabled):
+    def __init__(self, layers, gpu_enabled=False,name="default",load=False):
         self.layercount = len(layers)
         self.layers = []
         self.learning_rate = 0.04
@@ -26,11 +25,12 @@ class NeuralNet:
         self.max_batch_size = 1
         self.debug = False
         self.data_index = 1
+        self.load = load
         
-        self.cumulative_error =0 # sum of error so far
+        self.cumulative_error=0 # sum of error so far
         self.data_count=0
         self.error_percentage=100
-        self.gpu_enabled= gpu_enabled
+        self.gpu_enabled=gpu_enabled
         
         prev_size = 1
         for curr_size in layers:
@@ -38,11 +38,61 @@ class NeuralNet:
             prev_size = curr_size
         
         self.target_mat = Matrix(1,1,self.gpu_enabled, None)
-        print ("NeuralNetV4 CREATED:  layers:",self.layercount," Activation FUNC : ",Matrix.activation, "GPU enabled:",gpu_enabled)
+        print ("NeuralNetV4+load-save created:  layers:",self.layercount," Activation FUNC : ",Matrix.activation, "GPU enabled:",gpu_enabled)
+        i = 1
+        filename  = name + "-" + str(self.layercount)
+        while i < (self.layercount-1): 
+            filename = filename + "-" + str(self.layers[i].nodes)
+            i=i+1
+        self.filename = filename  
+        if load:
+            self.loadNeuralNet()     
         
+    def saveNeuralNet(self):              
+        print("Saving NeuralNet to filename : ",self.filename)
+        wfile = self.filename + "-wgt-"
+        bias = self.filename + "-bias-"
+        i = 0
+        while i < (self.layercount): 
+            self.layers[i].weights.loadFromGpu()
+            self.layers[i].bias.loadFromGpu()
+            
+            np.save(wfile+str(i),self.layers[i].weights.mat)
+            print(self.layers[i].weights.mat)
+            np.save(bias+str(i),self.layers[i].bias.mat)  
+            #print(self.layers[i].bias.mat)          
+            i=i+1
+            
+    def loadNeuralNet(self):              
+        print("Loading NeuralNet from filename : ",self.filename)
+        wfile = self.filename + "-wgt-"
+        bias = self.filename + "-bias-"
+        i = 0
+        while i < (self.layercount): 
+            #print("before shape :",self.layers[i].weights.mat.shape,type(self.layers[i].weights.mat))
+            self.layers[i].weights.mat = np.load(wfile+str(i)+".npy")
+            print(self.layers[i].weights.mat)
+            #print("After shape :",self.layers[i].weights.mat.shape,type(self.layers[i].weights.mat))
+            
+            self.layers[i].weights.saveToGpu()
+            #print("before shape :",self.layers[i].bias.mat.shape,type(self.layers[i].weights.mat))
+            self.layers[i].bias.mat = np.load(bias+str(i)+".npy") 
+            #print(self.layers[i].bias.mat)
+            #print("After shape :",self.layers[i].bias.mat.shape,type(self.layers[i].weights.mat))
+            self.layers[i].bias.saveToGpu()
+                  
+            i=i+1
+            
+            
+    def bulk_injest(self, input_args, target_args):
+        self.layers[0].output.bulk_injest(input_args,target_args)
         
-    def predict(self, input_args, target_args, batch_size,input_index):
+    def bulk_print(self,):
+        self.layers[0].output.bulk_print()
+                                
+    def predict(self, input_args, target_args, batch_size, input_index):
         batch_size = 1
+        self.layers[0].output.input_index = input_index
         #target_mat = Matrix(1,1,self.gpu_enabled, target_args)
         self.target_mat.injest(target_args)
         #self.layers[0].output.injest(input_args)
@@ -52,42 +102,32 @@ class NeuralNet:
             self.layers[i].output.compositeActivation(self.layers[i].weights, self.layers[i-1].output, self.layers[i].bias)  
             i = i+1
                 
-        last_layer = self.layercount-1
-        
+        last_layer = self.layercount-1  
+              
         self.layers[last_layer].error_val.subtract(self.target_mat, self.layers[last_layer].output)
-        if self.debug==True :
-            self.layers[last_layer].error_val.printMat(str(0)+" sub-after error_val") 
         self.errorval = self.layers[last_layer].error_val.getFirstElement()
         
         # Stats : calculate the error
         self.cumulative_error = self.cumulative_error + abs(self.layers[last_layer].output.getFirstElement() -self.target_mat.getFirstElement())
         self.data_count = self.data_count +1
         self.error_percentage = (self.cumulative_error/self.data_count)*100
-    
-    def bulk_injest(self, input_args, target_args):
-        #print("input: ",input_args)
-        self.layers[0].output.bulk_injest(input_args,target_args)
-        
-    def bulk_print(self,):
-        self.layers[0].output.bulk_print()
-                
+                    
     def train(self, input_args, target_args, batch_size,input_index):
-        self.layers[0].output.input_index = input_index
         self.predict(input_args,target_args,batch_size,input_index)
 
         if self.debug==True :
             print(self.data_index," Input..:", input_args, "Target:", target_args, " : ",self.layers[self.layercount-1].output.getFirstElement())
-            #self.layers[2].weights.printMat()
             
         i = self.layercount-1
         while i>0 :            
             self.layers[i].gradients.compositeDeActivation(self.layers[i].output,self.layers[i].error_val,self.learning_rate, self.layers[i].bias)
-    
             self.layers[i].weights.compositeMultiplyTranspose(self.layers[i].gradients, self.layers[i-1].output, self.layers[i].weights_delta)
 
             if (i-1)>0 :
-                self.layers[i-1].error_val.multiplyTranspose2(self.layers[i].weights, self.layers[i].error_val)
+                if i==(self.layercount-1):
+                    #TODO: feed scalar instead of vector 
+                    self.layers[i-1].error_val.multiplyTranspose2(self.layers[i].weights, self.layers[i].error_val)
+                else:
+                    self.layers[i-1].error_val.multiplyTranspose2(self.layers[i].weights, self.layers[i].error_val)
             i = i-1
             
-
-
