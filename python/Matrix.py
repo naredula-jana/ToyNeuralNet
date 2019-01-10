@@ -95,6 +95,34 @@ __global__ void CompositeDeActivationKernel(int rows, int columns, float *a, flo
         bias[tx * columns  + ty] = bias[tx * columns  + ty] + Output;
     }
 }
+__global__ void CompositeBatchActivationKernel(int rows, int common_cols, int columns, float *a, float *b, float *c, float*d, int batch_size)
+{
+    int tx = threadIdx.x  + blockDim.x * blockIdx.x;
+    int ty = threadIdx.y + blockDim.y * blockIdx.y;
+    
+    //  # multiply + add + mapActivation : output = (A*B) + C  , activation
+    // each thread picks i and j of the matrix
+    //        self.mat = np.matmul(A.mat,B.mat)
+    //        self.add(self,C)
+    //        self.mapActivation()
+
+    float Output = 0;
+
+    if (tx < rows  && ty < columns ) {    
+    // 1.Multiplication
+       for (int k = 0; k < common_cols; ++k) {
+          float Aelement = a[tx * common_cols + k];
+          float Belement = b[k * columns + ty];
+          Output += Aelement * Belement;
+       } 
+ 
+    // 2. Addition
+       Output = Output  + c[tx * columns  + ty] ;
+       
+    //3. Aactivation 
+      d[tx * columns + ty] = 1/(1+ exp(-Output)) ; 
+    }
+}
 __global__ void CompositeActivationKernel(int rows, int common_cols, int columns, float *a, float *b, float *c, float*d)
 {
     int tx = threadIdx.x  + blockDim.x * blockIdx.x;
@@ -230,10 +258,11 @@ class Matrix:
             Matrix.gpu_multiplyTrans2Scalarkernel = mod.get_function("Transpose2MulScalarKernel")
                         
             Matrix.gpu_compositeActivationkernel = mod.get_function("CompositeActivationKernel")
+            Matrix.gpu_compositeBatchActivationkernel = mod.get_function("CompositeBatchActivationKernel")
             Matrix.gpu_compositeDeactivationkernel = mod.get_function("CompositeDeActivationKernel")
             Matrix.gpu_compositeTransposeMulkernel = mod.get_function("CompositeTransposeMulKernel")
             
-            print("Initialised Kernels for GPU ")
+            print("Initialised KERNELS for GPU ")
 
         self.gpu_enabled = gpu_enabled
         self.im_list = [ ]
@@ -349,10 +378,25 @@ class Matrix:
                 self.mat = 1 / (1 + np.exp(-self.mat))
         else:
             self.mat = np.tanh(self.mat)
- 
-    def compositeActivation(self,A,B_arg,C):
+    
+    def compositeBatchActivation(self,A,B,C):
         # multiply + add + mapActivation : output = (A*B) + C
         
+        batch_size =  np.float32(B.cols)
+        if self.gpu_enabled :
+            self.gpu_compositeBatchActivationkernel(
+                self.rows, A.cols, self.cols,
+                A.mat_gpu, B.mat_gpu,C.mat_gpu, 
+                self.mat_gpu, batch_size,
+                block = self.gpu_block, grid = self.gpu_grid,
+                )
+        else:
+            self.mat = np.matmul(A.mat,B.mat)
+            self.add(self,C)
+            self.mapActivation()
+            
+    def compositeActivation(self,A,B_arg,C):
+        # multiply + add + mapActivation : output = (A*B) + C
         if (B_arg.inner_enable):
             index = B_arg.input_index
             B_mat = B_arg.im_list[index].mat
@@ -429,8 +473,6 @@ class Matrix:
                     
     def subtract(self, X,Y):
         if self.gpu_enabled :
-            #print("gpu subtract: ",X.mat_gpu.get())
-            #print("gpu subtract: ",Y.mat_gpu.get())
             self.gpu_matrixSubtractkernel(
                 self.rows,self.cols,
                 X.mat_gpu, Y.mat_gpu, 
@@ -439,6 +481,13 @@ class Matrix:
                 )     
         else:           
             self.mat = X.mat - Y.mat
+            
+    def subtractScalar(self, s,y):
+        if self.gpu_enabled :
+            self.mat[0][0] = s - y
+            self.saveToGpu()   
+        else:           
+            self.mat[0][0] = s - y
 
     def multiplyTranspose2(self, X,Y):
         if X.rows != Y.rows:

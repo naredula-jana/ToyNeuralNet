@@ -4,7 +4,7 @@ import random
 import numpy as np 
                  
 class Layer:
-    def __init__(self, curr_lay,prev_lay,gpu_enabled):     
+    def __init__(self, curr_lay,prev_lay,gpu_enabled,batch_size=1):     
         self.nodes = curr_lay
         
         self.weights = Matrix(curr_lay,prev_lay,gpu_enabled, None)
@@ -14,15 +14,16 @@ class Layer:
         self.weights_delta = Matrix(curr_lay,prev_lay, gpu_enabled, None)
         self.error_val =  Matrix(curr_lay,1,gpu_enabled , None) 
         self.output =  Matrix(curr_lay,1, gpu_enabled, None) 
+        self.batch_output =  Matrix(curr_lay,batch_size, gpu_enabled, None) 
         self.gradients = Matrix(curr_lay,1, gpu_enabled, None) 
          
 class NeuralNet:
-    def __init__(self, layers, gpu_enabled=False,name="default",load=False):
+    def __init__(self, layers, gpu_enabled=False,name="default",load=False,batch_size=1):
         self.layercount = len(layers)
         self.layers = []
         self.learning_rate = 0.04
-        self.errorval = 0
-        self.max_batch_size = 1
+        #self.errorval = 0
+        self.batch_size = batch_size
         self.debug = False
         self.data_index = 1
         self.load = load
@@ -31,14 +32,15 @@ class NeuralNet:
         self.data_count=0
         self.error_percentage=100
         self.gpu_enabled=gpu_enabled
+        self.last_layer = self.layercount -1
         
         prev_size = 1
         for curr_size in layers:
-            self.layers.append(Layer(curr_size,prev_size,gpu_enabled))
+            self.layers.append(Layer(curr_size,prev_size,gpu_enabled,batch_size))
             prev_size = curr_size
         
         self.target_mat = Matrix(1,1,self.gpu_enabled, None)
-        print ("NeuralNetV4+load-save created:  layers:",self.layercount," Activation FUNC : ",Matrix.activation, "GPU enabled:",gpu_enabled)
+        print ("NeuralNetV4+BATCH created:  layers:",self.layercount," Activation FUNC : ",Matrix.activation, "GPU enabled:",gpu_enabled)
         i = 1
         filename  = name + "-" + str(self.layercount)
         while i < (self.layercount-1): 
@@ -58,9 +60,8 @@ class NeuralNet:
             self.layers[i].bias.loadFromGpu()
             
             np.save(wfile+str(i),self.layers[i].weights.mat)
-            print(self.layers[i].weights.mat)
-            np.save(bias+str(i),self.layers[i].bias.mat)  
-            #print(self.layers[i].bias.mat)          
+            #print(self.layers[i].weights.mat)
+            np.save(bias+str(i),self.layers[i].bias.mat)         
             i=i+1
             
     def loadNeuralNet(self):              
@@ -69,16 +70,11 @@ class NeuralNet:
         bias = self.filename + "-bias-"
         i = 0
         while i < (self.layercount): 
-            #print("before shape :",self.layers[i].weights.mat.shape,type(self.layers[i].weights.mat))
             self.layers[i].weights.mat = np.load(wfile+str(i)+".npy")
             print(self.layers[i].weights.mat)
-            #print("After shape :",self.layers[i].weights.mat.shape,type(self.layers[i].weights.mat))
             
             self.layers[i].weights.saveToGpu()
-            #print("before shape :",self.layers[i].bias.mat.shape,type(self.layers[i].weights.mat))
             self.layers[i].bias.mat = np.load(bias+str(i)+".npy") 
-            #print(self.layers[i].bias.mat)
-            #print("After shape :",self.layers[i].bias.mat.shape,type(self.layers[i].weights.mat))
             self.layers[i].bias.saveToGpu()
                   
             i=i+1
@@ -89,26 +85,44 @@ class NeuralNet:
         
     def bulk_print(self,):
         self.layers[0].output.bulk_print()
-                                
+        
+    def batch_predict(self, input_args, target_args, batch_size, input_index):
+        self.layers[0].output.input_index = input_index
+        #self.target_mat.injest(target_args)
+                  
+        i = 1
+        while i < (self.layercount):               
+            self.layers[i].batch_output.compositeBatchActivation(self.layers[i].weights, self.layers[i-1].batch_output, self.layers[i].bias)  
+            i = i+1
+                
+        final_output = self.layers[self.last_layer].batch_output.getFirstElement() 
+        #self.layers[last_layer].error_val.subtract(self.target_mat, self.layers[last_layer].output)
+        #self.layers[self.last_layer].error_val.subtractScalar(target_args[0], final_output)
+        
+        # Stats : calculate the error
+        i=0
+        while i<batch_size : 
+            self.cumulative_error = self.cumulative_error + abs(self.layers[self.last_layer].batch_output[i][0] - target_args[i])
+            i=i+1
+        self.data_count = self.data_count +batch_size
+        self.error_percentage = (self.cumulative_error/self.data_count)*100
+                                        
     def predict(self, input_args, target_args, batch_size, input_index):
         batch_size = 1
         self.layers[0].output.input_index = input_index
-        #target_mat = Matrix(1,1,self.gpu_enabled, target_args)
-        self.target_mat.injest(target_args)
-        #self.layers[0].output.injest(input_args)
-            
+        #self.target_mat.injest(target_args)
+                  
         i = 1
         while i < (self.layercount):               
             self.layers[i].output.compositeActivation(self.layers[i].weights, self.layers[i-1].output, self.layers[i].bias)  
             i = i+1
                 
-        last_layer = self.layercount-1  
-              
-        self.layers[last_layer].error_val.subtract(self.target_mat, self.layers[last_layer].output)
-        self.errorval = self.layers[last_layer].error_val.getFirstElement()
+        final_output = self.layers[self.last_layer].output.getFirstElement() 
+        #self.layers[self.last_layer].error_val.subtract(self.target_mat, self.layers[last_layer].output)
+        self.layers[self.last_layer].error_val.subtractScalar(target_args[0], final_output)
         
         # Stats : calculate the error
-        self.cumulative_error = self.cumulative_error + abs(self.layers[last_layer].output.getFirstElement() -self.target_mat.getFirstElement())
+        self.cumulative_error = self.cumulative_error + abs(final_output - target_args[0])
         self.data_count = self.data_count +1
         self.error_percentage = (self.cumulative_error/self.data_count)*100
                     
@@ -124,10 +138,6 @@ class NeuralNet:
             self.layers[i].weights.compositeMultiplyTranspose(self.layers[i].gradients, self.layers[i-1].output, self.layers[i].weights_delta)
 
             if (i-1)>0 :
-                if i==(self.layercount-1):
-                    #TODO: feed scalar instead of vector 
-                    self.layers[i-1].error_val.multiplyTranspose2(self.layers[i].weights, self.layers[i].error_val)
-                else:
-                    self.layers[i-1].error_val.multiplyTranspose2(self.layers[i].weights, self.layers[i].error_val)
+                self.layers[i-1].error_val.multiplyTranspose2(self.layers[i].weights, self.layers[i].error_val)
             i = i-1
             
