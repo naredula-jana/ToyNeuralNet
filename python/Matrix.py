@@ -101,6 +101,7 @@ __global__ void CompositeBatchActivationKernel(int rows, int common_cols, int co
     int ty = threadIdx.y + blockDim.y * blockIdx.y;
     
     //  # multiply + add + mapActivation : output = (A*B) + C  , activation
+    // A = weights B =old output   C= bias
     // each thread picks i and j of the matrix
     //        self.mat = np.matmul(A.mat,B.mat)
     //        self.add(self,C)
@@ -108,19 +109,19 @@ __global__ void CompositeBatchActivationKernel(int rows, int common_cols, int co
 
     float Output = 0;
 
-    if (tx < rows  && ty < columns ) {    
-    // 1.Multiplication
+    if (tx < rows  && ty < columns ) {   
+       // 1.Multiplication
        for (int k = 0; k < common_cols; ++k) {
           float Aelement = a[tx * common_cols + k];
           float Belement = b[k * columns + ty];
           Output += Aelement * Belement;
        } 
  
-    // 2. Addition
-       Output = Output  + c[tx * columns  + ty] ;
+       // 2. Addition
+        Output = Output  + c[tx * columns ] ;
        
-    //3. Aactivation 
-      d[tx * columns + ty] = 1/(1+ exp(-Output)) ; 
+       //3. Aactivation 
+        d[tx * columns + ty] = 1/(1+ exp(-Output)) ; 
     }
 }
 __global__ void CompositeActivationKernel(int rows, int common_cols, int columns, float *a, float *b, float *c, float*d)
@@ -290,7 +291,7 @@ class Matrix:
             #initialise the weights accordingly
             self.mat = np.random.randn(rows,cols).astype('f')*np.sqrt(2/cols)
             
-            # TODO only for testing remove later
+            # Used for unit testing
             if False:
                 k=1
                 for i in range(self.rows):
@@ -321,7 +322,22 @@ class Matrix:
             return self.mat[0][0]
         else:
             return self.mat[0][0] 
-     
+
+    def batch_injest(self, input_vector, target, index): 
+
+        for i in range(len(input_vector)):
+            self.mat[i][index] = input_vector[i]
+            
+        if self.gpu_enabled and index==(self.cols-1):
+            self.mat_gpu.set(self.mat)
+            return True
+        else:
+            if index==(self.cols-1):
+                return True
+            else:
+                return False
+            
+               
     def bulk_injest(self, vector, target):
         if self.cols > 1:
             print("ERROR in Injest: More then columns") 
@@ -354,7 +370,17 @@ class Matrix:
             
         if self.gpu_enabled :
             self.mat_gpu.set(self.mat)
-                
+  
+    def average(self, X):
+        if self.gpu_enabled :
+            #TODO: need to implement
+            self.mat[0][0]=0   
+        else: 
+            for i in range(X.rows):
+                self.mat[i][0]=0
+                for j in range(X.cols):           
+                    self.mat[i][0] = self.mat[i][0] + X.mat[i][j] 
+                self.mat[i][0] = self.mat[i][0]/X.cols             
     
     def add(self, X,Y):
         if self.gpu_enabled :
@@ -379,23 +405,27 @@ class Matrix:
         else:
             self.mat = np.tanh(self.mat)
     
-    def compositeBatchActivation(self,A,B,C):
+    def compositeBatchActivation(self,Weigts,Output,Bias):
         # multiply + add + mapActivation : output = (A*B) + C
-        
-        batch_size =  np.float32(B.cols)
+        # newoutput = weights * old_output + Bias
+        batch_size =  np.float32(Output.cols)
         if self.gpu_enabled :
             self.gpu_compositeBatchActivationkernel(
-                self.rows, A.cols, self.cols,
-                A.mat_gpu, B.mat_gpu,C.mat_gpu, 
+                self.rows, Weigts.cols, self.cols,
+                Weigts.mat_gpu, Output.mat_gpu,Bias.mat_gpu, 
                 self.mat_gpu, batch_size,
                 block = self.gpu_block, grid = self.gpu_grid,
                 )
         else:
-            self.mat = np.matmul(A.mat,B.mat)
-            self.add(self,C)
-            self.mapActivation()
+            self.mat = np.matmul(Weigts.mat,Output.mat)
+            for i in range(self.rows):
+                for j in range(self.cols): 
+                    self.mat[i][j] = self.mat[i][j] + Bias.mat[i][0]
+                    self.mat[i][j] = 1 / (1 + np.exp(-self.mat[i][j]))
+                    
+            #self.mapActivation()
             
-    def compositeActivation(self,A,B_arg,C):
+    def compositeActivation(self,Weigts,B_arg,Bias):
         # multiply + add + mapActivation : output = (A*B) + C
         if (B_arg.inner_enable):
             index = B_arg.input_index
@@ -407,14 +437,14 @@ class Matrix:
             
         if self.gpu_enabled :
             self.gpu_compositeActivationkernel(
-                self.rows, A.cols, self.cols,
-                A.mat_gpu, B_mat_gpu,C.mat_gpu, 
+                self.rows, Weigts.cols, self.cols,
+                Weigts.mat_gpu, B_mat_gpu,Bias.mat_gpu, 
                 self.mat_gpu, 
                 block = self.gpu_block, grid = self.gpu_grid,
                 )
         else:
-            self.mat = np.matmul(A.mat,B_mat)
-            self.add(self,C)
+            self.mat = np.matmul(Weigts.mat,B_mat)
+            self.add(self,Bias)
             self.mapActivation()
                     
     def compositeDeActivation(self, A,B,s, bias):
@@ -432,7 +462,12 @@ class Matrix:
             self.mat = A.mat
             self.mapDeActivation()
             self.mat = self.mat*B.mat*s
-            bias.add(bias,self)
+            for i in range(self.rows):
+                temp_sum=bias.mat[i][0]
+                for j in range(self.cols):
+                    temp_sum=temp_sum+self.mat[i][j]
+                bias.mat[i][0]=temp_sum/self.cols
+            #bias.add(bias,self)
         
     def compositeMultiplyTranspose(self, A,B_arg,C):
         if A.cols != B_arg.cols:
