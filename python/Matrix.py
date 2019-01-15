@@ -405,7 +405,7 @@ class Matrix:
         else:
             self.mat = np.tanh(self.mat)
     
-    def compositeBatchActivation(self,Weigts,Output,Bias):
+    def NOTINUSEcompositeBatchActivation(self,Weigts,Output,Bias):
         # multiply + add + mapActivation : output = (A*B) + C
         # newoutput = weights * old_output + Bias
         batch_size =  np.float32(Output.cols)

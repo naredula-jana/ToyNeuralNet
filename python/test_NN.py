@@ -7,10 +7,10 @@ pr = cProfile.Profile()
 pr.enable()
 
 batch = True
-batch_len=1
-#nn = NeuralNet([4,1600,2600,1600,2500,1],gpu_enabled=False,name="testsmall",load=False,batch_size=batch_len)
+batch_len=30
+nn = NeuralNet([4,1600,2600,1600,2500,1],gpu_enabled=True,name="testsmall",load=False,batch_size=batch_len,learning_rate=0.005)
 #nn = NeuralNet([4,5600,5600,5600,5500,1],gpu_enabled=True,name="testLarge",load=False,batch_size=batch_len)
-nn = NeuralNet([4,3,4,5,1],gpu_enabled=False,name="testsmall",load=False,batch_size=batch_len)
+#nn = NeuralNet([4,3,4,5,1],gpu_enabled=False,name="testsmall",load=False,batch_size=batch_len)
 #nn = NeuralNet([4,3,4,5,1],False)
 data = pd.read_csv("./iris_training.csv")
 #print (data)
@@ -35,13 +35,15 @@ while i< datalen :
 iteration=0
 nn.debug=False
 start = time.time()
-while iteration< 80 :
+while iteration< 260 :
     i=0
-    if iteration%5 == 0:
-        print(iteration," Error Percentage: ",nn.error_percentage," load: ",nn.load, "samples: ",nn.data_count,"batch:",batch," Batch_size: ",nn.batch_size)
+    if iteration%10 == 0:
+        print(iteration," load: ",nn.load, "samples: ",nn.data_count,"batch:",batch," Batch_size: ",nn.batch_size," Error Percentage: ",nn.error_percentage)
         end = time.time()
         print("Time taken: ",(end-start))
         start = time.time()
+        nn.data_count =0
+        nn.cumulative_error =0
         #nn.debug=True
         
     while i< datalen :

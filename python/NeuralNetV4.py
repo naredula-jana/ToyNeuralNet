@@ -24,10 +24,10 @@ class Layer:
          
 class NeuralNet:
     #__slots__ = ['layercount','layers','filename','learning_rate','batch_size','debug','data_index','load','cumulative_error','data_count','error_percentage','gpu_enabled','last_layer','batch_target','target_mat']
-    def __init__(self, layers, gpu_enabled=False,name="default",load=False,batch_size=1):
+    def __init__(self, layers, gpu_enabled=False,name="default",load=False,batch_size=1,learning_rate=0.04):
         self.layercount = len(layers)
         self.layers = []
-        self.learning_rate = 0.04
+        self.learning_rate = learning_rate
         #self.errorval = 0
         self.batch_size = batch_size
         self.debug = False
@@ -107,7 +107,7 @@ class NeuralNet:
             self.layers[i].batch_output.compositeActivation(self.layers[i].weights, self.layers[i-1].batch_output, self.layers[i].bias)  
             i = i+1
           
-        #self.layers[self.last_layer].batch_output.loadFromGpu()      
+        self.layers[self.last_layer].batch_output.loadFromGpu()      
         # Stats : calculate the error
         i=0
         target_sum = 0
@@ -116,9 +116,8 @@ class NeuralNet:
             self.cumulative_error = self.cumulative_error + abs(self.layers[self.last_layer].batch_output.mat[0][i] - self.batch_target.mat[i][0])
             target_sum = target_sum + self.batch_target.mat[i][0]
             i=i+1
-        #self.cumulative_error = self.cumulative_error + abs(self.layers[self.last_layer].output.mat[0][0] - (target_sum/self.batch_size))
-        #self.layers[self.last_layer].error_val.mat[0][0] = self.layers[self.last_layer].output.mat[0][0] - (target_sum/self.batch_size)
-        #self.layers[self.last_layer].error_val.saveToGpu()
+
+        self.layers[self.last_layer].batch_error_val.saveToGpu()
         
         self.data_count = self.data_count +self.batch_size
         self.error_percentage = (self.cumulative_error/self.data_count)*100
