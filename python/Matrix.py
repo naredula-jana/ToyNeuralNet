@@ -3,6 +3,7 @@ import pandas as pd
 import random
 import numpy as np 
 import math
+import sys
 #from numba import vectorize
 #from numba import cuda, float32
 from pycuda import driver, compiler, gpuarray, tools
@@ -29,48 +30,6 @@ __global__ void MatrixSubtractKernel(int rows, int columns, float *a, float *b, 
     c[tx * columns  + ty] = a[tx * columns  + ty]  - b[tx * columns  + ty] ;
 
 }
-__global__ void MultiplyScalarKernel(int rows, int columns, float *a, float scalar, float *b)
-{
-    int tx = threadIdx.x  + blockDim.x * blockIdx.x;
-    int ty = threadIdx.y + blockDim.y * blockIdx.y;
-    
-    if (tx < rows  && ty < columns )
-    b[ty * columns + tx] = (b[ty * columns + tx]) * (a[ty * columns  + tx]) * (scalar);
-}
-__global__ void MapActivationKernel(int rows, int columns, float *a)
-{
-    int tx = threadIdx.x  + blockDim.x * blockIdx.x;
-    int ty = threadIdx.y + blockDim.y * blockIdx.y;
-    
-     if (tx < rows  && ty < columns )
-    a[ty * columns + tx] = 1/(1+ exp(-a[ty * columns + tx])) ;
-}
-__global__ void CopyKernel(int rows, int columns, float *a, float *b)
-{
-    int tx = threadIdx.x  + blockDim.x * blockIdx.x;
-    int ty = threadIdx.y + blockDim.y * blockIdx.y;
-    
-    if (tx < rows  && ty < columns )
-    b[ty * columns + tx] = a[ty * columns + tx] ;
-}
-__global__ void CopyTransposeKernel(int rows, int columns, float *a, float *b)
-{
-    int tx = threadIdx.x  + blockDim.x * blockIdx.x;
-    int ty = threadIdx.y + blockDim.y * blockIdx.y;
-    
-    if (tx < rows  && ty < columns )
-    b[ty * columns + tx] = a[tx * columns + ty] ;
-}
-
-__global__ void MapDeActivationKernel(int rows, int columns, float *a)
-{
-    int tx = threadIdx.x  + blockDim.x * blockIdx.x;
-    int ty = threadIdx.y + blockDim.y * blockIdx.y;
-    
-     if (tx < rows  && ty < columns )
-    a[ty * columns + tx] = a[ty * columns+ tx] * (1-a[ty * columns+ tx]) ;
-}
-
 
 __global__ void CompositeDeActivationKernel(int rows, int columns, float *a, float *b, float scalar, float *c ,float *bias)
 {
@@ -202,22 +161,7 @@ __global__ void Transpose2MulScalarKernel(int rows, int common_cols,  int column
        c[tx * columns + ty] = Pvalue;
     }
 }
-__global__ void MatrixMulKernel(int rows, int columns, float *a, float *b, float *c)
-{
-    int tx = threadIdx.x  + blockDim.x * blockIdx.x;
-    int ty = threadIdx.y + blockDim.y * blockIdx.y;
 
-    float Pvalue = 0;
-
-    if (tx < rows  && ty < columns ) {
-       for (int k = 0; k < columns; ++k) {
-          float Aelement = a[ty * columns + k];
-          float Belement = b[k * rows + tx];
-          Pvalue += Aelement * Belement;
-       }
-       c[ty * columns + tx] = Pvalue;
-    }
-}
 __global__ void TransposeMatrixMulKernel(int rows, int columns, float *a, float *b, float *c)
 {
     int tx = threadIdx.x  + blockDim.x * blockIdx.x;
@@ -238,7 +182,7 @@ __global__ void TransposeMatrixMulKernel(int rows, int columns, float *a, float 
 """
 
 class Matrix:
-    activation = "sigmoid"
+    #activation = "sigmoid"
     gpu_matrixadd = 1
     matrix_initialised = False      
     class InnerMatrix:
@@ -246,7 +190,7 @@ class Matrix:
             self.rows = np.int32(rows)
             self.cols = np.int32(cols)
             
-    def __init__(self, rows,cols,gpu_enabled,vector):
+    def __init__(self, rows,cols,gpu_enabled,vector, activation="sigmoid"):
         if True and Matrix.matrix_initialised == False :
             Matrix.matrix_initialised  = True
             kernel_code = kernel_code_template % {
@@ -263,12 +207,13 @@ class Matrix:
             Matrix.gpu_compositeDeactivationkernel = mod.get_function("CompositeDeActivationKernel")
             Matrix.gpu_compositeTransposeMulkernel = mod.get_function("CompositeTransposeMulKernel")
             
-            print("Initialised KERNELS for GPU ")
+            print("Initialised KERNELS for GPU  version 1.00")
 
         self.gpu_enabled = gpu_enabled
         self.im_list = [ ]
         self.inner_enable = False
         self.input_index = 0
+        self.activation = activation
         if vector is not None:
             self.rows = np.int32(1)
             self.cols = np.int32(len(vector))
@@ -394,56 +339,65 @@ class Matrix:
             self.mat = X.mat + Y.mat
         
     def mapActivation(self):
+        if self.gpu_enabled :
+            print("ERROR : Not expected map activation in gpu ")
+            sys.exit()
+            
         if self.activation == "sigmoid" :
-            if self.gpu_enabled :
-                self.gpu_mapactivationkernel(
-                    self.mat_gpu,
-                    block = self.gpu_block, grid = self.gpu_grid,
-                    )
-            else:
-                self.mat = 1 / (1 + np.exp(-self.mat))
+            self.mat = 1 / (1 + np.exp(-self.mat))
+        elif self.activation == "leaky_relu":
+            #self.mat = np.where(self.mat > 0, self.mat, self.mat * 0.01)
+            self.mat = np.where(self.mat > 0, self.mat, 0)
+            return
+            for i in range(self.rows):
+                for j in range(self.cols):
+                    if self.mat[i][j] <0 :
+                        #self.mat[i][j] = self.mat[i][j] * 0.01
+                        self.mat[i][j] = 0
+
+            
         else:
             self.mat = np.tanh(self.mat)
-    
-    def NOTINUSEcompositeBatchActivation(self,Weigts,Output,Bias):
-        # multiply + add + mapActivation : output = (A*B) + C
-        # newoutput = weights * old_output + Bias
-        batch_size =  np.float32(Output.cols)
-        if self.gpu_enabled :
-            self.gpu_compositeBatchActivationkernel(
-                self.rows, Weigts.cols, self.cols,
-                Weigts.mat_gpu, Output.mat_gpu,Bias.mat_gpu, 
-                self.mat_gpu, batch_size,
-                block = self.gpu_block, grid = self.gpu_grid,
-                )
-        else:
-            self.mat = np.matmul(Weigts.mat,Output.mat)
-            for i in range(self.rows):
-                for j in range(self.cols): 
-                    self.mat[i][j] = self.mat[i][j] + Bias.mat[i][0]
-                    self.mat[i][j] = 1 / (1 + np.exp(-self.mat[i][j]))
-                    
-            #self.mapActivation()
             
-    def compositeActivation(self,Weigts,B_arg,Bias):
-        # multiply + add + mapActivation : output = (A*B) + C
-        if (B_arg.inner_enable):
-            index = B_arg.input_index
-            B_mat = B_arg.im_list[index].mat
-            B_mat_gpu = B_arg.im_list[index].mat_gpu
+    def mapDeActivation(self):
+        if self.gpu_enabled :
+            print("ERROR : Not expected map Deactivation in gpu ")
+            sys.exit()
+            
+        if self.activation == "sigmoid" :
+            self.mat =  self.mat * (1 - self.mat)
+        elif self.activation == "leaky_relu":
+            # TODO: need to use numpy function instead of iteration
+            self.mat = np.where(self.mat > 0, 1, 0)
+            return
+            for i in range(self.rows):
+                for j in range(self.cols):
+                    if self.mat[i][j] >0 :
+                        self.mat[i][j] = 1
+                    else:
+                        self.mat[i][j] = 0
         else:
-            B_mat = B_arg.mat
-            B_mat_gpu = B_arg.mat_gpu
+            self.mat = (1.0 - (self.mat*self.mat))  
+            
+    def compositeActivation(self,Weigts,Output_arg,Bias):
+        # multiply + add + mapActivation : output = (A*B) + C
+        if (Output_arg.inner_enable):
+            index = Output_arg.input_index
+            Output_mat = Output_arg.im_list[index].mat
+            Output_mat_gpu = Output_arg.im_list[index].mat_gpu
+        else:
+            Output_mat = Output_arg.mat
+            Output_mat_gpu = Output_arg.mat_gpu
             
         if self.gpu_enabled :
             self.gpu_compositeActivationkernel(
                 self.rows, Weigts.cols, self.cols,
-                Weigts.mat_gpu, B_mat_gpu,Bias.mat_gpu, 
+                Weigts.mat_gpu, Output_mat_gpu,Bias.mat_gpu, 
                 self.mat_gpu, 
                 block = self.gpu_block, grid = self.gpu_grid,
                 )
         else:
-            self.mat = np.matmul(Weigts.mat,B_mat)
+            self.mat = np.matmul(Weigts.mat,Output_mat)
             self.add(self,Bias)
             self.mapActivation()
                     
@@ -493,18 +447,6 @@ class Matrix:
             C.mat = np.matmul(A.mat,B_mat.T)
             self.add(self, C)
      
-                
-    def mapDeActivation(self):
-        if self.activation == "sigmoid" :
-            if self.gpu_enabled :
-                self.gpu_mapDeactivationkernel(
-                    self.mat_gpu,
-                    block = self.gpu_block, grid = self.gpu_grid,
-                    )
-            else:
-                self.mat =  self.mat * (1 - self.mat)
-        else:
-            self.mat = (1.0 - (self.mat*self.mat))
                     
     def subtract(self, X,Y):
         if self.gpu_enabled :
@@ -559,3 +501,22 @@ class Matrix:
         else:
             print("Matrix: ", s,self.mat)
                   
+    def NOTINUSEcompositeBatchActivation(self,Weigts,Output,Bias):
+        # multiply + add + mapActivation : output = (A*B) + C
+        # newoutput = weights * old_output + Bias
+        batch_size =  np.float32(Output.cols)
+        if self.gpu_enabled :
+            self.gpu_compositeBatchActivationkernel(
+                self.rows, Weigts.cols, self.cols,
+                Weigts.mat_gpu, Output.mat_gpu,Bias.mat_gpu, 
+                self.mat_gpu, batch_size,
+                block = self.gpu_block, grid = self.gpu_grid,
+                )
+        else:
+            self.mat = np.matmul(Weigts.mat,Output.mat)
+            for i in range(self.rows):
+                for j in range(self.cols): 
+                    self.mat[i][j] = self.mat[i][j] + Bias.mat[i][0]
+                    self.mat[i][j] = 1 / (1 + np.exp(-self.mat[i][j]))
+                    
+            #self.mapActivation()

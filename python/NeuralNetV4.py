@@ -4,22 +4,29 @@ import random
 import numpy as np 
                  
 class Layer:
-    def __init__(self, curr_lay,prev_lay,gpu_enabled,batch_size=1):     
+    def __init__(self, curr_lay,prev_lay,gpu_enabled,batch_size=1,last_layer=False):     
         self.nodes = curr_lay
+        #activation = "leaky_relu"  
+        activation = "sigmoid" 
+        if last_layer :
+            activation = "sigmoid"
+
         
-        self.weights = Matrix(curr_lay,prev_lay,gpu_enabled, None)
-        self.bias =  Matrix(curr_lay,1, gpu_enabled, None)  
+        self.weights = Matrix(curr_lay,prev_lay,gpu_enabled, None, activation=activation)
+        self.bias =  Matrix(curr_lay,1, gpu_enabled, None, activation=activation)  
         
         # weights_delta is a temporary matrix.
-        self.weights_delta = Matrix(curr_lay,prev_lay, gpu_enabled, None)
+        self.weights_delta = Matrix(curr_lay,prev_lay, gpu_enabled, None, activation=activation)
         
-        self.error_val =  Matrix(curr_lay,1,gpu_enabled , None) 
-        self.output =  Matrix(curr_lay,1, gpu_enabled, None) 
-        self.gradients = Matrix(curr_lay,1, gpu_enabled, None) 
+        self.error_val =  Matrix(curr_lay,1,gpu_enabled , None, activation=activation) 
+        self.output =  Matrix(curr_lay,1, gpu_enabled, None, activation=activation) 
+        self.gradients = Matrix(curr_lay,1, gpu_enabled, None, activation=activation) 
 
-        self.batch_error_val =  Matrix(curr_lay,batch_size,gpu_enabled , None)         
-        self.batch_output =  Matrix(curr_lay,batch_size, gpu_enabled, None) 
-        self.batch_gradients = Matrix(curr_lay,batch_size, gpu_enabled, None) 
+        self.batch_error_val =  Matrix(curr_lay,batch_size,gpu_enabled , None, activation=activation)         
+        self.batch_output =  Matrix(curr_lay,batch_size, gpu_enabled, None, activation=activation) 
+        self.batch_gradients = Matrix(curr_lay,batch_size, gpu_enabled, None, activation=activation) 
+        
+        self.activation=activation
         
          
 class NeuralNet:
@@ -41,13 +48,18 @@ class NeuralNet:
         self.last_layer = self.layercount -1
         
         prev_size = 1
+        current_layer=0
+        last_layer = False
         for curr_size in layers:
-            self.layers.append(Layer(curr_size,prev_size,gpu_enabled,batch_size))
+            if current_layer == self.last_layer :
+                last_layer = True
+            current_layer = current_layer +1
+            self.layers.append(Layer(curr_size,prev_size,gpu_enabled,batch_size=batch_size,last_layer=last_layer))
             prev_size = curr_size
         
         self.target_mat = Matrix(1,1,self.gpu_enabled, None)
         self.batch_target = Matrix(batch_size,1,self.gpu_enabled, None)
-        print ("NeuralNetV4   layers:",self.layercount," Activation FUNC : ",Matrix.activation, "GPU enabled:",gpu_enabled," batch size:",self.batch_size)
+        print ("NeuralNetV4...  layers:",self.layercount, "GPU enabled:",gpu_enabled," batch size:",self.batch_size," activation: ",self.layers[0].activation," lastActivation: ",self.layers[self.last_layer].activation)
         i = 1
         filename  = name + "-" + str(self.layercount)
         while i < (self.layercount-1): 

@@ -7,8 +7,8 @@ pr = cProfile.Profile()
 pr.enable()
 
 batch = True
-batch_len=30
-nn = NeuralNet([4,1600,2600,1600,2500,1],gpu_enabled=True,name="testsmall",load=False,batch_size=batch_len,learning_rate=0.005)
+batch_len=10
+nn = NeuralNet([4,1600,2600,1600,2500,1],gpu_enabled=False,name="testsmall",load=False,batch_size=batch_len,learning_rate=0.005)
 #nn = NeuralNet([4,5600,5600,5600,5500,1],gpu_enabled=True,name="testLarge",load=False,batch_size=batch_len)
 #nn = NeuralNet([4,3,4,5,1],gpu_enabled=False,name="testsmall",load=False,batch_size=batch_len)
 #nn = NeuralNet([4,3,4,5,1],False)
