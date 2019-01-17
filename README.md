@@ -4,15 +4,17 @@
 Following are different performance experiments of Neuralnet used for prediction and Training purposes:
 - NeuralNet using golang
 - NeuralNet using different versions of Python
-    - using List : very slow (260sec)
-    - using Arrays: Better then List (160sec)
-    - using numpy: Best of all the three (95sec)
+    - using python List : very slow (260sec)
+    - using python Arrays: Better then List (160sec)
+    - using numpy library: Best of all the three (95sec) : Reason: Array are implemented natively, due to this matrix multiplication is faster.
+    - using GPU : better then numpy when the layer contain large number of neurons.
 - NeuralNet using CPU versus GPU
     - Small number of neurons vs large number of neurons per layer:
       -  CPU latency is better if the  number of neurons are less , but GPU as better latency if the neurons are large in number. The reason is overhead in submitting the job to GPU.
     - Workload: Training vs predict:  
-      -  GPU provides better latency in Training vs Predict.
-    -  Batch vs Without Batch: Batch is good for GPU. 
+      -  GPU provides better latency in Training  when compare to Predict. Reason: Predict contain mXn by mX1 multiplication, but Trainning need mXn by mXn mulitplication , and also update of weights.
+    -  Batch vs Without Batch: 
+    	 - Batch is good for GPU and CPU. As batch level increases, the efficiency of cpu parallelism goes up. 
     
 
 # Tests 
@@ -61,10 +63,9 @@ Following are different performance experiments of Neuralnet used for prediction
 
 # overhead of Syscalls 
 
-system calls per second: 620000 /sec
-
  ```
  CPU TEST: 600% CPU : most of time spend in matrix multiplication
+ system calls per second in CPU test: 620k /sec
  % time     seconds  usecs/call     calls    errors syscall
 ------ ----------- ----------- --------- --------- ----------------
  55.93    1.908009           2   1240313           sched_yield
@@ -74,7 +75,8 @@ system calls per second: 620000 /sec
   0.00    0.000000           0        50         6 futex
 ------ ----------- ----------- --------- --------- ----------------
 
-GPU TEST: 100% CPU  :  Most of the time spend in IO with GPU due to this futex calls are high.
+GPU TEST: 100% CPU  :  Most of the time spend in IO with GPU due to this time for futex  are high.
+ system calls per second in CPU test: 100k /sec, Here mostly IO instensive with GPU.
 % time     seconds  usecs/call     calls    errors syscall
 ------ ----------- ----------- --------- --------- ----------------
  41.52    5.524696       21923       252           poll
