@@ -1,27 +1,33 @@
  
-# Performance of NeuralNet on various Platform:
+# Performance of ToyNeuralNet on various Platforms:
+ToyNeuralNet is Neuralnet implemented from scratch without using any ML library. The goal of the project is to measure the performance of NeuralNet on various platforms like python vs golang, cpu vs gpu, network size, different python implementation , batch size, trainning vs inference..etc
 
-Following are different performance experiments of Neuralnet used for prediction and Training purposes:
-- NeuralNet using golang
-- NeuralNet using different versions of Python
+Following are different performance experiments of ToyNeuralnet used for Inference and Training purposes:
+
+- ToyNeuralNet using different versions of Python:
     - using python List : very slow (260sec)
     - using python Arrays: Better then List (160sec)
-    - using numpy library: Best of all the three (95sec) : Reason: Array are implemented natively, due to this matrix multiplication is faster.
+    - using numpy library: Best of all the three (95sec) 
+    - Summary: Numpy is best of all the three(python list,python array and numpy). Reason: Numbpy Array are implemented natively, due to this matrix multiplication is faster.
     - using GPU : better then numpy when the layer contain large number of neurons.
-- NeuralNet using CPU versus GPU
+- ToyNeuralNet using CPU versus GPU with python:
     - Small number of neurons vs large number of neurons per layer:
-      -  CPU latency is better if the  number of neurons are less , but GPU as better latency if the neurons are large in number. The reason is overhead in submitting the job to GPU.
+      -  CPU as better latency when compare to GPU for small number of neurons. for large neurons GPU is better. The reason is overhead in submitting the job to GPU, overhead of CPU and GPU communication is large for small neuralnets when compare to large neural net.
     - Workload: Training vs predict:  
       -  GPU provides better latency in Training  when compare to Predict. Reason: Predict contain mXn by mX1 multiplication, but Trainning need mXn by mXn mulitplication , and also update of weights.
     -  Batch vs Without Batch: 
-    	 - Batch is good for GPU and CPU. As batch level increases, the efficiency of cpu parallelism goes up. 
+    	 - Batch is good for GPU and CPU. As batch level increases, the efficiency of cpu parallelism goes up.  
+- ToyNeuralNet using golang vs Python: Partially done.
+- ToyNeuralNet inside the linux kernel especially for inference: In streaming inference  there will be lot of network IO, means there there will lot of system calls and memorycopy. Pushing ToyNeuralNet inside the linux kernel avoid system call overhead and gives better memory copy.  
     
 
-# Tests 
+# Test Results 
 
- NeuralNet layers size: [4,1600,2600,1600,2500,1]
- learning_rate=0.005
- 
+- Data Set : Iris flower Dataset.
+- Large-NeuralNet:  with large number of neurons: Network size: [4,1600,2600,1600,2500,1]
+- Small-NeuralNet:  with small number of neurons: Network size: [4,3,4,5,1]
+- Test script: test_NN.py
+
  
 <table border=1>
 <thead>
@@ -32,31 +38,45 @@ Following are different performance experiments of Neuralnet used for prediction
 </tr>
 <tr>
 <th>1</th>
-<th> with CPU batch=3
+<th> Large-NeuralNet Trainning with CPU batch=3
    </th>
-<th>time taken for trainning=24sec  cpu utilization=600% gpu utilization=0%</th>
+<th>Time taken by Trainning=24sec  cpu utilization=600% gpu utilization=0%.  Summary: CPU is slower when compare to GPU.</th>
 </tr>
 <tr>
 <th>2</th>
-<th> with GPU batch=3
+<th> Large-NeuralNet Trainning with GPU batch=3
 </th>
-<th>time taken for trainning=9sec 
- cpu utilization=100% gpu=100%
+<th>Time taken by Trainning=9sec 
+ cpu utilization=100% gpu=100%. Summary: Test on GPU is faster when compare to CPU. 
 </th>
 </tr>
 
 <tr>
 <th>3</th>
-<th> with CPU batch=10
+<th>Large-NeuralNet Trainning with CPU batch=10
    </th>
-<th>time taken for trainning=9sec  cpu utilization=600% gpu utilization=0%</th>
+<th>Time taken by Trainning=9sec  cpu utilization=600% gpu utilization=0%</th>
 </tr>
 <tr>
 <th>4</th>
-<th> with GPU batch=10
+<th>Large-NeuralNet Trainning with GPU batch=10
 </th>
-<th>time taken for trainning=5.4sec 
+<th>Time taken by Trainning=5.4sec 
  cpu utilization=100% gpu=100%
+</th>
+</tr>
+<tr>
+<th>5</th>
+<th>Large-NeuralNet Prediction/Inference with GPU batch=10
+</th>
+<th>  CPU is slightly faster then GPU, Reason why GPU is not faster: a) Matrix multiplication used in Inference is MxN by MX1  instead of MXN by MXN used in trainning ,  for large batching GPU becomes better. 2) In Inference there will not be much memory writes so gpu computations are less.
+</th>
+</tr>
+<tr>
+<th>6</th>
+<th>Small-NeuralNet Trainning with GPU Vs CPU
+</th>
+<th>CPU latency is much better when compare to GPU, GPU as overhead of loading the data from main memory to GPU and viceversa for a very small computation. 
 </th>
 </tr>
 </tbody></table>
