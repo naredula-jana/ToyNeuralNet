@@ -1,5 +1,9 @@
  
 # Performance of ToyNeuralNet on various Platforms:
+A "toy neural network" generally refers to a simple implementation of a neural network, this is used for educational or demonstration purposes. Neural networks are a type of machine learning algorithm modeled after the structure and function of the human brain, and they are used for a wide range of tasks such as image classification, speech recognition, and natural language processing.
+
+A toy neural network typically has only a few layers and a limited number of neurons, and it may not have the complexity or performance of larger, production-ready neural networks. However, building a toy neural network can be a great way to learn about the basics of neural network architecture, activation functions, loss functions, and backpropagation, which are fundamental concepts in deep learning.
+
 ToyNeuralNet is Neuralnet implemented from scratch without using any ML library. The goal of the project is to measure the performance of NeuralNet on various platforms like python vs golang, cpu vs gpu, network size, different python implementation , batch size, trainning vs inference..etc
 
 Following are different performance experiments of ToyNeuralnet used for Inference and Training purposes:
